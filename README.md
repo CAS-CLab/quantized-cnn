@@ -12,7 +12,7 @@ You can also use our code for single image classification (BMP format). Please r
 
 ## Speed-test
 
-The experiment is carried out on a single desktop PC, equipped with an Intel&reg; Core&trade; i7-4790K CPU and 32GB RAM. All programs are executed in the single-thread mode, without GPU acceleration.
+The experiment is carried out on a single desktop PC, equipped with an Intel&reg; Core&trade; i7-4790K CPU and 32GB RAM. All programs are executed in the single-thread mode, without GPU acceleration. **Note that the run-time speed comparison result may vary under different hardware conditions.**
 
 We compare the run-time speed of [AlexNet](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks), for which Quantized-CNN's theoretical speed-up is 4.15&times;. For the baseline method, we use the [Caffe](http://caffe.berkeleyvision.org/) implementation, compiled with ATLAS (default BLAS choice). We measure the forward-passing time per image, based on the average of 100 batches. Each batch contains a single image, since in practice, users usually take one photo with their cellphones and then fed it into the ConvNet for classification. The experiment is repeated five times and here are the results:
 
