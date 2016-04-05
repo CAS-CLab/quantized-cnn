@@ -448,19 +448,23 @@ void CaffeEva::PrepFeatBuf(void) {
     featBufStrLst.clear();
     switch (layerInfo.type) {
     case ENUM_LyrType::Conv:
-      // feature buffer #0: <featMapSrcRsp>
+      // feature buffer #0: <featMapSrcPrm>
+      InitFeatBuf(&featBufStr, ENUM_BufUsage::PrecComp,
+          dataCnt, imgChnCurr, imgHeiCurr, imgWidCurr);
+      featBufStrLst.push_back(featBufStr);
+      // feature buffer #1: <featMapSrcRsp>
       InitFeatBuf(&featBufStr, ENUM_BufUsage::PrecComp,
           imgChnCurr / grpCnt * knlSiz * knlSiz, imgHeiNext * imgWidNext);
       featBufStrLst.push_back(featBufStr);
-      // feature buffer #1: <featMapDstRsp>
+      // feature buffer #2: <featMapDstRsp>
       InitFeatBuf(&featBufStr, ENUM_BufUsage::PrecComp,
           knlCnt / grpCnt, imgHeiNext * imgWidNext);
       featBufStrLst.push_back(featBufStr);
-      // feature buffer #2: <featMapSrcPerGrp>
+      // feature buffer #3: <featMapSrcPerGrp>
       InitFeatBuf(&featBufStr, ENUM_BufUsage::AprxComp,
           dataCnt, imgHeiCurr, imgWidCurr, imgChnCurr / grpCnt);
       featBufStrLst.push_back(featBufStr);
-      // feature buffer #3: <inPdMat>
+      // feature buffer #4: <inPdMat>
       InitFeatBuf(&featBufStr, ENUM_BufUsage::AprxComp,
           dataCnt * imgHeiCurr * imgWidCurr, subSpaceCnt, ctrdCntPerSpace);
       featBufStrLst.push_back(featBufStr);
@@ -682,33 +686,42 @@ void CaffeEva::CalcFeatMap_Conv(const Matrix<float>& featMapSrc,
 
 void CaffeEva::CalcFeatMap_ConvPrec(const Matrix<float>& featMapSrc,
     const int layerInd, Matrix<float>* pFeatMapDst) {
-  // TODO(Jiaxiang Wu)
-  // implement this function for NxHxWxC inputs
-  // the code below is designed for NxCxHxW inputs
-  printf("[ERROR] CaffeEva::CalcFeatMap_ConvPrec() is not supported\n");
-  return;
-
   // obtain basic variables
   const LayerInfo& layerInfo = caffeParaObj.layerInfoLst[layerInd];
   const LayerPara& layerPara = caffeParaObj.layerParaLst[layerInd];
   int knlCnt = layerPara.convKnlLst.GetDimLen(0);
   int knlSiz = layerPara.convKnlLst.GetDimLen(2);
   int dataCnt = featMapSrc.GetDimLen(0);
-  int imgChnSrc = featMapSrc.GetDimLen(1);
-  int imgHeiDst = pFeatMapDst->GetDimLen(2);
-  int imgWidDst = pFeatMapDst->GetDimLen(3);
+  int imgHeiSrc = featMapSrc.GetDimLen(1);
+  int imgWidSrc = featMapSrc.GetDimLen(2);
+  int imgChnSrc = featMapSrc.GetDimLen(3);
+  int imgHeiDst = pFeatMapDst->GetDimLen(1);
+  int imgWidDst = pFeatMapDst->GetDimLen(2);
+  int imgChnDst = pFeatMapDst->GetDimLen(3);
   int knlCntPerGrp = knlCnt / layerInfo.grpCnt;
   int imgChnSrcPerGrp = imgChnSrc / layerInfo.grpCnt;
 
+  // obtain pre-allocated matrices for auxiliary variables
+  Matrix<float>& featMapSrcPrm = *(featBufStrMat[layerInd][0].pFeatBuf);
+  Matrix<float>& featMapSrcRsp = *(featBufStrMat[layerInd][1].pFeatBuf);
+  Matrix<float>& featMapDstRsp = *(featBufStrMat[layerInd][2].pFeatBuf);
+
+  // permute the input feature map dimensions
+  featMapSrcPrm.Resize(dataCnt, imgHeiSrc, imgWidSrc, imgChnSrc);
+  memcpy(featMapSrcPrm.GetDataPtr(),
+      featMapSrc.GetDataPtr(), sizeof(float) * featMapSrc.GetEleCnt());
+  featMapSrcPrm.Permute(0, 3, 1, 2);
+
+  // reshape the output feature map
+  pFeatMapDst->Resize(dataCnt, imgChnDst, imgHeiDst, imgWidDst);
+
   // compute the feature map after passing a convolutional layer
   const float* biasVec = layerPara.biasVec.GetDataPtr();
-  Matrix<float>& featMapSrcRsp = *(featBufStrMat[layerInd][0].pFeatBuf);
-  Matrix<float>& featMapDstRsp = *(featBufStrMat[layerInd][1].pFeatBuf);
   for (int dataInd = 0; dataInd < dataCnt; dataInd++) {
     for (int grpInd = 0; grpInd < layerInfo.grpCnt; grpInd++) {
       // copy source feature map to feature buffer
       CvtFeatMapToFeatBuf(
-          featMapSrc, dataInd, grpInd, layerInfo, &featMapSrcRsp);
+          featMapSrcPrm, dataInd, grpInd, layerInfo, &featMapSrcRsp);
 
       // call CBLAS function to compute the matrix-matrix multiplication
       int knlIndL = grpInd * knlCntPerGrp;
@@ -745,6 +758,9 @@ void CaffeEva::CalcFeatMap_ConvPrec(const Matrix<float>& featMapSrc,
           featMapDstRsp, dataInd, grpInd, layerInfo, pFeatMapDst);
     }  // ENDFOR: grpInd
   }  // ENDFOR: dataInd
+
+  // permute the output feature map dimensions
+  pFeatMapDst->Permute(0, 2, 3, 1);
 }
 
 void CaffeEva::CalcFeatMap_ConvAprx(const Matrix<float>& featMapSrc,
@@ -770,8 +786,8 @@ void CaffeEva::CalcFeatMap_ConvAprx(const Matrix<float>& featMapSrc,
   int imgChnSrcPerGrp = imgChnSrc / layerInfo.grpCnt;
 
   // obtain pre-allocated matrices for auxiliary variables
-  Matrix<float>& featMapSrcPerGrp = *(featBufStrMat[layerInd][2].pFeatBuf);
-  Matrix<float>& inPdMat = *(featBufStrMat[layerInd][3].pFeatBuf);
+  Matrix<float>& featMapSrcPerGrp = *(featBufStrMat[layerInd][3].pFeatBuf);
+  Matrix<float>& inPdMat = *(featBufStrMat[layerInd][4].pFeatBuf);
 
   // obtain pre-allocated centroid and assignment buffer
   Matrix<float>& ctrdBuf = *(ctrdBufStrLst[layerInd].pCtrdBuf);
@@ -924,10 +940,8 @@ void CaffeEva::CalcFeatMap_FCntPrec(const Matrix<float>& featMapSrc,
   // obtain basic variables
   const LayerPara& layerPara = caffeParaObj.layerParaLst[layerInd];
   int dataCnt = featMapSrc.GetDimLen(0);
-  int imgChnSrc = featMapSrc.GetDimLen(1);
-  int imgChnDst = pFeatMapDst->GetDimLen(1);
-  int imgHeiSrc = featMapSrc.GetDimLen(2);
-  int imgWidSrc = featMapSrc.GetDimLen(3);
+  int imgChnSrc = featMapSrc.GetDimStp(0);
+  int imgChnDst = pFeatMapDst->GetDimStp(0);
 
   // call CBLAS function to compute the matrix-matrix multiplication
   CBLAS_ORDER order = CblasRowMajor;
@@ -935,7 +949,7 @@ void CaffeEva::CalcFeatMap_FCntPrec(const Matrix<float>& featMapSrc,
   CBLAS_TRANSPOSE transB = CblasTrans;
   CBLAS_INT m = dataCnt;
   CBLAS_INT n = imgChnDst;
-  CBLAS_INT k = imgChnSrc * imgHeiSrc * imgWidSrc;
+  CBLAS_INT k = imgChnSrc;
   CBLAS_INT lda = k;
   CBLAS_INT ldb = k;
   CBLAS_INT ldc = n;

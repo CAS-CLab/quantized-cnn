@@ -2,3 +2,10 @@
 *.o
 QuanCNN
 
+# ignore files for the original AlexNet model
+/AlexNet/Bin.Files/*.convKnl.*
+/AlexNet/Bin.Files/*.fcntWei.*
+
+# ignore the binary file containing 1k images
+/ILSVRC12.227x227.IMG/dataMatTst.single.bin
+
