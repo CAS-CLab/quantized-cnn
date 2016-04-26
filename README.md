@@ -6,6 +6,8 @@ Quantized-CNN is a novel framework of convolutional neural network (CNN) with si
 
 We have prepared a file (500+MB) containing 1k images drawn from the ILSVRC-12 validation set for a more accurate speed-test. You can download it from [here](https://onedrive.live.com/redir?resid=D968C5EC99B231C!647138&authkey=!AFq00tB5N71t1Cw&ithint=file%2cbin), and put it under the "ILSVRC12.227x227.IMG" directory.
 
+For the original AlexNet model, you can download the corresponding model files from [here](https://onedrive.live.com/redir?resid=D968C5EC99B231C!742681&authkey=!AMiIg1D39Bdxumo&ithint=file%2cgzl), and put them under the "AlexNet/Bin.Files" directory.
+
 Prior to compilation, you need to install [ATLAS](http://math-atlas.sourceforge.net) and [OpenVML](https://github.com/xianyi/OpenVML), and modify Makefile if needed. After that, use "make" to generate the executable file and "make run" to perform the speed-test with the above 1k images.
 
 You can also use our code for single image classification (BMP format). Please refer to "src/Main.cc" for details.
