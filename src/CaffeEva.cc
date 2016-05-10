@@ -7,6 +7,8 @@
 
 #include "../include/CaffeEva.h"
 
+#include <immintrin.h>
+
 #include "../include/BlasWrapper.h"
 #include "../include/CaffePara.h"
 #include "../include/Common.h"
@@ -18,6 +20,19 @@
 #else
   #define SHR_PRINTF printf
 #endif  // ENDIF: ENBL_ANDROID_DBG
+
+// define MACRO for SSE-based table look-up operation
+#define SSE_LOOKUP(pTbl, pIdx, vTbl, pos) { \
+  vTbl = _mm256_set_ps(                     \
+      pTbl[pIdx[pos + 7]],                  \
+      pTbl[pIdx[pos + 6]],                  \
+      pTbl[pIdx[pos + 5]],                  \
+      pTbl[pIdx[pos + 4]],                  \
+      pTbl[pIdx[pos + 3]],                  \
+      pTbl[pIdx[pos + 2]],                  \
+      pTbl[pIdx[pos + 1]],                  \
+      pTbl[pIdx[pos + 0]]);                 \
+}
 
 // initialize constant variables
 const int kDataCntInBatch = 1;  // number of images in each batch
@@ -590,16 +605,6 @@ void CaffeEva::PrepAsmtBuf(void) {
       asmtBufStr.dimLenLst[3] = knlCnt;
       asmtBufStr.pAsmtBuf = new Matrix<uint8_t>(layerPara.asmtLst);
       asmtBufStr.pAsmtBuf->Permute(1, 2, 3, 0);
-
-      // create the extended assignment buffer
-      asmtBufStr.pAsmtBufExt =
-          new Matrix<CBLAS_INT>(knlHei, knlWid, subSpaceCnt, knlCnt);
-      const int eleCnt = asmtBufStr.pAsmtBuf->GetEleCnt();
-      const uint8_t* asmtVecSrc = asmtBufStr.pAsmtBuf->GetDataPtr();
-      CBLAS_INT* asmtVecDst = asmtBufStr.pAsmtBufExt->GetDataPtr();
-      for (int eleInd = 0; eleInd < eleCnt; eleInd++) {
-        asmtVecDst[eleInd] = asmtVecSrc[eleInd];
-      }  // ENDFOR: eleInd
     }  // ENDIF: layerInfo
 
     // allocate assignment buffer for the fully-connected layer
@@ -615,15 +620,6 @@ void CaffeEva::PrepAsmtBuf(void) {
       asmtBufStr.dimLenLst[1] = imgChnDst;
       asmtBufStr.pAsmtBuf = new Matrix<uint8_t>(layerPara.asmtLst);
       asmtBufStr.pAsmtBuf->Permute(1, 0);
-
-      // create the extended assignment buffer
-      asmtBufStr.pAsmtBufExt = new Matrix<CBLAS_INT>(subSpaceCnt, imgChnDst);
-      const int eleCnt = asmtBufStr.pAsmtBuf->GetEleCnt();
-      const uint8_t* asmtVecSrc = asmtBufStr.pAsmtBuf->GetDataPtr();
-      CBLAS_INT* asmtVecDst = asmtBufStr.pAsmtBufExt->GetDataPtr();
-      for (int eleInd = 0; eleInd < eleCnt; eleInd++) {
-        asmtVecDst[eleInd] = asmtVecSrc[eleInd];
-      }  // ENDFOR: eleInd
     }  // ENDIF: layerInfo
   }  // ENDFOR: layerInd
 }
@@ -792,11 +788,15 @@ void CaffeEva::CalcFeatMap_ConvAprx(const Matrix<float>& featMapSrc,
   // obtain pre-allocated centroid and assignment buffer
   Matrix<float>& ctrdBuf = *(ctrdBufStrLst[layerInd].pCtrdBuf);
   Matrix<uint8_t>& asmtBuf = *(asmtBufStrLst[layerInd].pAsmtBuf);
-  // Matrix<CBLAS_INT>& asmtBufExt = *(asmtBufStrLst[layerInd].pAsmtBufExt);
+
+  // declare <__m256> variables to use AVX instructions
+  __m256 vTbl;
+  int vRsltCnt = knlCntPerGrp >> 3;
+  const int kVRsltCntMax = 64;  // maximal number of channels: 512
+  static __m256 vRsltLst[kVRsltCntMax];
 
   // compute the feature map after passing a convolutional layer
   int sptCntDst = imgHeiDst * imgWidDst;
-  // int sptCntKnl = knlHei * knlWid;
   const float* biasVec = layerPara.biasVec.GetDataPtr();
   for (int grpInd = 0; grpInd < layerInfo.grpCnt; grpInd++) {
     // obtain basic variables for the current feature map group
@@ -837,7 +837,11 @@ void CaffeEva::CalcFeatMap_ConvAprx(const Matrix<float>& featMapSrc,
         // initialize <convSumLst> with the bias term
         float* featVecDst =
             pFeatMapDst->GetDataPtr(dataInd, heiIndDst, widIndDst, knlIndL);
-        memcpy(featVecDst, biasVec + knlIndL, sizeof(float) * knlCntPerGrp);
+
+        // initialize <vRsltLst> with <biasVec>
+        for (int vRsltIdx = 0; vRsltIdx < vRsltCnt; vRsltIdx++) {
+          vRsltLst[vRsltIdx] = _mm256_load_ps(&(biasVec[vRsltIdx << 3]));
+        }  // ENDFOR: vRsltIdx
 
         // compute the target response via table look-up operations
         int heiIndKnl;  // to shorten the line length
@@ -853,20 +857,20 @@ void CaffeEva::CalcFeatMap_ConvAprx(const Matrix<float>& featMapSrc,
                 asmtBuf.GetDataPtr(heiIndKnl, widIndKnl, 0, knlIndL);
             for (subSpaceInd = 0; subSpaceInd < subSpaceCnt; subSpaceInd++) {
               for (int knlInd = 0; knlInd < knlCntPerGrp; knlInd += 8) {
-                featVecDst[knlInd] += inPdVec[asmtVec[knlInd]];
-                featVecDst[knlInd + 1] += inPdVec[asmtVec[knlInd + 1]];
-                featVecDst[knlInd + 2] += inPdVec[asmtVec[knlInd + 2]];
-                featVecDst[knlInd + 3] += inPdVec[asmtVec[knlInd + 3]];
-                featVecDst[knlInd + 4] += inPdVec[asmtVec[knlInd + 4]];
-                featVecDst[knlInd + 5] += inPdVec[asmtVec[knlInd + 5]];
-                featVecDst[knlInd + 6] += inPdVec[asmtVec[knlInd + 6]];
-                featVecDst[knlInd + 7] += inPdVec[asmtVec[knlInd + 7]];
+                int vRsltIdx = knlInd >> 3;
+                SSE_LOOKUP(inPdVec, asmtVec, vTbl, knlInd);
+                vRsltLst[vRsltIdx] = _mm256_add_ps(vRsltLst[vRsltIdx], vTbl);
               }  // ENDFOR: knlInd
               inPdVec += ctrdCntPerSpace;
               asmtVec += knlCnt;
             }  // ENDFOR: subSpaceInd
           }  // ENDFOR: widIndKnl
         }  // ENDFOR: heiIndKnl
+
+        // copy results from <vRsltLst> to <featVecDst>
+        for (int vRsltIdx = 0; vRsltIdx < vRsltCnt; vRsltIdx++) {
+          _mm256_store_ps(&(featVecDst[vRsltIdx << 3]), vRsltLst[vRsltIdx]);
+        }  // ENDFOR: vRsltIdx
       }  // ENDFOR: dataInd
     }  // ENDFOR: sptIndDst
     swEstiInPdValConv.Pause();
@@ -988,7 +992,12 @@ void CaffeEva::CalcFeatMap_FCntAprx(const Matrix<float>& featMapSrc,
   // obtain pre-allocated centroid and assignment buffer
   Matrix<float>& ctrdBuf = *(ctrdBufStrLst[layerInd].pCtrdBuf);
   Matrix<uint8_t>& asmtBuf = *(asmtBufStrLst[layerInd].pAsmtBuf);
-  // Matrix<CBLAS_INT>& asmtBufExt = *(asmtBufStrLst[layerInd].pAsmtBufExt);
+
+  // declare <__m256> variables to use AVX instructions
+  __m256 vTbl;
+  int vRsltCnt = imgChnDst >> 3;
+  const int kVRsltCntMax = 512;  // maximal number of outputs: 4096
+  static __m256 vRsltLst[kVRsltCntMax];
 
   // quantize the source feature map with pre-defined codebook
   swCompLkupTblFCnt.Resume();
@@ -1004,7 +1013,11 @@ void CaffeEva::CalcFeatMap_FCntAprx(const Matrix<float>& featMapSrc,
   for (int dataInd = 0; dataInd < dataCnt; dataInd++) {
     // initialize target response with the bias term
     float* featVecDst = pFeatMapDst->GetDataPtr(dataInd, 0, 0, 0);
-    memcpy(featVecDst, biasVec, sizeof(float) * imgChnDst);
+
+    // initialize <vRsltLst> with <biasVec>
+    for (int vRsltIdx = 0; vRsltIdx < vRsltCnt; vRsltIdx++) {
+      vRsltLst[vRsltIdx] = _mm256_load_ps(&(biasVec[vRsltIdx << 3]));
+    }  // ENDFOR: vRsltIdx
 
     // update target response with look-up operations
     const float* inPdVec = inPdMat.GetDataPtr(dataInd, 0);  // index offset
@@ -1012,20 +1025,20 @@ void CaffeEva::CalcFeatMap_FCntAprx(const Matrix<float>& featMapSrc,
     for (int subSpaceInd = 0; subSpaceInd < subSpaceCnt; subSpaceInd++) {
       // update the target response within the current subspace
       for (int chnIndDst = 0; chnIndDst < imgChnDst; chnIndDst += 8) {
-        featVecDst[chnIndDst] += inPdVec[asmtVec[chnIndDst]];
-        featVecDst[chnIndDst + 1] += inPdVec[asmtVec[chnIndDst + 1]];
-        featVecDst[chnIndDst + 2] += inPdVec[asmtVec[chnIndDst + 2]];
-        featVecDst[chnIndDst + 3] += inPdVec[asmtVec[chnIndDst + 3]];
-        featVecDst[chnIndDst + 4] += inPdVec[asmtVec[chnIndDst + 4]];
-        featVecDst[chnIndDst + 5] += inPdVec[asmtVec[chnIndDst + 5]];
-        featVecDst[chnIndDst + 6] += inPdVec[asmtVec[chnIndDst + 6]];
-        featVecDst[chnIndDst + 7] += inPdVec[asmtVec[chnIndDst + 7]];
+        int vRsltIdx = chnIndDst >> 3;
+        SSE_LOOKUP(inPdVec, asmtVec, vTbl, chnIndDst);
+        vRsltLst[vRsltIdx] = _mm256_add_ps(vRsltLst[vRsltIdx], vTbl);
       }  // ENDFOR: chnIndDst
 
       // update pointers to the look-up table and assignment variable
       inPdVec += ctrdCntPerSpace;
       asmtVec += imgChnDst;
     }  // ENDFOR: subSpaceInd
+
+    // copy results from <vRsltLst> to <featVecDst>
+    for (int vRsltIdx = 0; vRsltIdx < vRsltCnt; vRsltIdx++) {
+      _mm256_store_ps(&(featVecDst[vRsltIdx << 3]), vRsltLst[vRsltIdx]);
+    }  // ENDFOR: vRsltIdx
   }  // ENDFOR: dataInd
   swEstiInPdValFCnt.Pause();
 }

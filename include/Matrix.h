@@ -13,6 +13,7 @@
 #include "../include/Common.h"
 
 const int kMatDimCntMax = 4;
+const int kMemAlnBytCnt = 32;  // as required by _mm256_store_ps()
 
 template<typename T>
 class Matrix {
@@ -157,7 +158,8 @@ inline void Matrix<T>::Create(const int m) {
   // create a new matrix
   dimCnt_ = 1;
   m_ = m;
-  data_ = new T[GetEleCnt()];
+  data_ = reinterpret_cast<T*>(
+      aligned_alloc(kMemAlnBytCnt, sizeof(T) * GetEleCnt()));
 }
 
 template<typename T>
@@ -169,7 +171,8 @@ inline void Matrix<T>::Create(const int m, const int n) {
   dimCnt_ = 2;
   m_ = m;
   n_ = n;
-  data_ = new T[GetEleCnt()];
+  data_ = reinterpret_cast<T*>(
+      aligned_alloc(kMemAlnBytCnt, sizeof(T) * GetEleCnt()));
 }
 
 template<typename T>
@@ -182,7 +185,8 @@ inline void Matrix<T>::Create(const int m, const int n, const int p) {
   m_ = m;
   n_ = n;
   p_ = p;
-  data_ = new T[GetEleCnt()];
+  data_ = reinterpret_cast<T*>(
+      aligned_alloc(kMemAlnBytCnt, sizeof(T) * GetEleCnt()));
 }
 
 template<typename T>
@@ -197,7 +201,8 @@ inline void Matrix<T>::Create(
   n_ = n;
   p_ = p;
   q_ = q;
-  data_ = new T[GetEleCnt()];
+  data_ = reinterpret_cast<T*>(
+      aligned_alloc(kMemAlnBytCnt, sizeof(T) * GetEleCnt()));
 }
 
 template<typename T>
@@ -225,7 +230,7 @@ template<typename T>
 inline void Matrix<T>::Destroy(void) {
   // release memory
   if (data_ != nullptr) {
-    delete[] data_;
+    free(data_);
     data_ = nullptr;
   }  // ENDIF: data_
 
