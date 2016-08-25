@@ -26,19 +26,13 @@ const int kLablCntPerData = 5;  // number of predicted labels per image
 
 CaffeEva::~CaffeEva(void) {
   // release dynamically allocated memory
-  dataLst.~Matrix();
-  lablVecGrth.~Matrix();
-  lablVecPred.~Matrix();
-  for (int layerInd = 0; layerInd <= caffeParaObj.layerCnt; layerInd++) {
-    featMapLst[layerInd].~Matrix();
-  }  // ENDFOR: layerInd
   delete[] featMapLst;
   for (int layerInd = 0; layerInd < caffeParaObj.layerCnt; layerInd++) {
     FeatBufStrLst& featBufStrLst = featBufStrMat[layerInd];
     for (std::size_t bufInd = 0; bufInd < featBufStrLst.size(); bufInd++) {
       // skip if no memory is allocated to the current buffer
       if (featBufStrLst[bufInd].pFeatBuf != nullptr) {
-        featBufStrLst[bufInd].pFeatBuf->~Matrix();
+        delete featBufStrLst[bufInd].pFeatBuf;
         featBufStrLst[bufInd].pFeatBuf = nullptr;
       }  // ENDIF: featBufStrLst
     }  // ENDFOR: bufInd
