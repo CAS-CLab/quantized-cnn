@@ -53,7 +53,6 @@ typedef struct {
   int dimCnt;
   int dimLenLst[kMatDimCntMax];
   Matrix<uint8_t>* pAsmtBuf;
-  Matrix<CBLAS_INT>* pAsmtBufExt;  // for cblas_sgthr()
 } AsmtBufStr;
 typedef std::vector<AsmtBufStr> AsmtBufStrLst;
 
