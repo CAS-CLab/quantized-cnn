@@ -8,7 +8,7 @@ We have prepared a file (500+MB) containing 1k images drawn from the ILSVRC-12 v
 
 For the original AlexNet model, you can download the corresponding model files from [here](https://onedrive.live.com/redir?resid=D968C5EC99B231C!742681&authkey=!AMiIg1D39Bdxumo&ithint=file%2cgzl), and put them under the "AlexNet/Bin.Files" directory.
 
-Prior to compilation, you need to install [ATLAS](http://math-atlas.sourceforge.net) and [OpenVML](https://github.com/xianyi/OpenVML), and modify Makefile if needed. After that, use "make" to generate the executable file and "make run" to perform the speed-test with the above 1k images.
+Prior to compilation, you need to install [ATLAS](http://math-atlas.sourceforge.net) and [OpenVML](https://github.com/xianyi/OpenVML), and modify the "CXXFLAGS" and "LDFLAGS" entries in the Makefile, if needed. Also, you should append the corresponding library paths to LD\_LIBRARY\_PATH in the ~/.bashrc. After that, use "make" to generate the executable file and "make run" to perform the speed-test with the above 1k images.
 
 You can also use our code for single image classification (BMP format). Please refer to "src/Main.cc" for details.
 
