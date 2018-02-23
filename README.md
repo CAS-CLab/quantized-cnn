@@ -4,9 +4,9 @@ Quantized-CNN is a novel framework of convolutional neural network (CNN) with si
 
 ## Installation
 
-We have prepared a file (500+MB) containing 1k images drawn from the ILSVRC-12 validation set for a more accurate speed-test. You can download it from [here](https://onedrive.live.com/redir?resid=D968C5EC99B231C!647138&authkey=!AFq00tB5N71t1Cw&ithint=file%2cbin), and put it under the "ILSVRC12.227x227.IMG" directory.
+We have prepared a file (500+MB) containing 1k images drawn from the ILSVRC-12 validation set for a more accurate speed-test. You can download it from [here](https://1drv.ms/u/s!Ahwjm8lejJYNp79irrjHGEmylB4F7w), and put it under the "ILSVRC12.227x227.IMG" directory.
 
-For the original AlexNet model, you can download the corresponding model files from [here](https://onedrive.live.com/redir?resid=D968C5EC99B231C!742681&authkey=!AMiIg1D39Bdxumo&ithint=file%2cgzl), and put them under the "AlexNet/Bin.Files" directory.
+For the original AlexNet model, you can download the corresponding model files from [here](https://1drv.ms/u/s!Ahwjm8lejJYNraoZ8qoxy4VUGzsL7Q), and put them under the "AlexNet/Bin.Files" directory.
 
 Prior to compilation, you need to install [ATLAS](http://math-atlas.sourceforge.net) and [OpenVML](https://github.com/xianyi/OpenVML), and modify the "CXXFLAGS" and "LDFLAGS" entries in the Makefile, if needed. Also, you should append the corresponding library paths to LD\_LIBRARY\_PATH in the ~/.bashrc. After that, use "make" to generate the executable file and "make run" to perform the speed-test with the above 1k images.
 
